@@ -5,3 +5,7 @@
 *.Po
 *.dll
 *.exe
+*.patch
+*.tar.xz
+mingw-w64-i686-gcc/src.fertig
+weg

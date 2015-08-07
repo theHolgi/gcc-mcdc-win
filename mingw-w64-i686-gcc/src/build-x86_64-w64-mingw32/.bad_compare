@@ -1,0 +1,4 @@
+gcc/coverage.o differs
+gcc/gcov-dump.o differs
+gcc/gcov.o differs
+x86_64-w64-mingw32/libgcc/_gcov.o differs

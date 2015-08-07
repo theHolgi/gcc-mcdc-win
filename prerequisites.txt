@@ -1,0 +1,11 @@
+msys/make
+msys/bsdtar
+msys/tar
+msys/diffutils
+
+from mingw-w64-x86_64-toolchain:
+mingw64/mingw-w64-x86_64-binutils
+mingw64/mingw-w64-x86_64-crt-git
+mingw64/mingw-w64-x86_64-libwinpthread-git
+mingw64/mingw-w64-x86_64-winpthreads-git
+mingw64/mingw-w64-x86_64-winstorecompat-git
