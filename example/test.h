@@ -1,2 +1,2 @@
-extern void testfunc (int a, int b, int c, int d);
+extern int testfunc (int var_a, int var_b);
 

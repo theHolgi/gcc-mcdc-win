@@ -7,5 +7,8 @@
 *.exe
 *.patch
 *.tar.xz
+*.gcno
+*.gcna
 mingw-w64-i686-gcc/src.fertig
+mingw-w64-i686-gcc/src/build-x86_64-w64-mingw32
 weg

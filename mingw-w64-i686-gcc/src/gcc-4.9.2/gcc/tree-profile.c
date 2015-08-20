@@ -66,7 +66,6 @@ static GTY(()) tree tree_time_profiler_fn;
 static GTY(()) tree tree_average_profiler_fn;
 static GTY(()) tree tree_ior_profiler_fn;
 
-
 static GTY(()) tree ic_void_ptr_var;
 static GTY(()) tree ic_gcov_type_ptr_var;
 static GTY(()) tree ptr_void;
@@ -293,12 +292,12 @@ gimple_gen_edge_profiler (int edgeno, edge e)
   one = build_int_cst (gcov_type_node, 1);
   gcov_type_tmp_var = make_temp_ssa_name (gcov_type_node,
 					  NULL, "PROF_edge_counter");
-  stmt1 = gimple_build_assign (gcov_type_tmp_var, ref);
+  stmt1 = gimple_build_assign (gcov_type_tmp_var, ref);     // PROF_edge_counter = <arc counter #edgeno>
   gcov_type_tmp_var = make_temp_ssa_name (gcov_type_node,
 					  NULL, "PROF_edge_counter");
-  stmt2 = gimple_build_assign_with_ops (PLUS_EXPR, gcov_type_tmp_var,
+  stmt2 = gimple_build_assign_with_ops (PLUS_EXPR, gcov_type_tmp_var, // expr: PROF_edge_counter + 1
 					gimple_assign_lhs (stmt1), one);
-  stmt3 = gimple_build_assign (unshare_expr (ref), gimple_assign_lhs (stmt2));
+  stmt3 = gimple_build_assign (unshare_expr (ref), gimple_assign_lhs (stmt2));  // <arc counter #edgeno> = <expr>
   gsi_insert_on_edge (e, stmt1);
   gsi_insert_on_edge (e, stmt2);
   gsi_insert_on_edge (e, stmt3);

@@ -1328,6 +1328,7 @@ OBJS = \
 	print-rtl.o \
 	print-tree.o \
 	profile.o \
+	profile-mcdc.o \
 	real.o \
 	realmpfr.o \
 	recog.o \

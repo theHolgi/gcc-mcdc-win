@@ -52,4 +52,5 @@ extern void get_working_sets (void);
 extern gcov_type get_hot_bb_threshold (void);
 extern void set_hot_bb_threshold (gcov_type);
 
+extern void create_mcdc_expression(tree old_cond_node, tree new_cond_node, int counter);
 #endif /* PROFILE_H */

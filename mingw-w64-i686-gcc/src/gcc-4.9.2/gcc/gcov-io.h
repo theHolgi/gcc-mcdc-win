@@ -238,6 +238,7 @@ typedef unsigned HOST_WIDEST_INT gcov_type_unsigned;
 #define GCOV_TAG_SUMMARY_LENGTH(NUM)  \
         (1 + GCOV_COUNTERS_SUMMABLE * (10 + 3 * 2) + (NUM) * 5)
 
+#define GCOV_TAG_MCDC        ((gcov_unsigned_t)0x01470000)
 
 /* Counters that are collected.  */
 #define GCOV_COUNTER_ARCS 	0  /* Arc transitions.  */
@@ -263,7 +264,8 @@ typedef unsigned HOST_WIDEST_INT gcov_type_unsigned;
 #define GCOV_TIME_PROFILER  8 /* Time profile collecting first run of a function */
 #define GCOV_LAST_VALUE_COUNTER 8  /* The last of counters used for value
 				      profiling.  */
-#define GCOV_COUNTERS		9
+#define GCOV_COUNTER_MCDC   9       /* decisions used on complex decisions */
+#define GCOV_COUNTERS		10
 
 /* Number of counters used for value profiling.  */
 #define GCOV_N_VALUE_COUNTERS \

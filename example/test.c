@@ -1,10 +1,10 @@
 #include "test.h"
 
-int x;
 
-void testfunc (int a, int b, int c, int d)
+int testfunc (int var_a, int var_b)
 {
-   if ((a || b) && (c || d))
+   int x;
+   if (var_a && var_b)
    {
       x = 0;
    }
@@ -12,4 +12,5 @@ void testfunc (int a, int b, int c, int d)
    {
       x = 1;
    }
+   return x;
 }

@@ -59,6 +59,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "omp-low.h"
 #include "gimple-low.h"
 #include "cilk.h"
+#include "profile.h"
+#include "profile-mcdc.h"
 
 #include "langhooks-def.h"	/* FIXME: for lhd_set_decl_assembler_name */
 #include "tree-pass.h"		/* FIXME: only for PROP_gimple_any */
@@ -143,6 +145,8 @@ struct gimplify_omp_ctx
 
 static struct gimplify_ctx *gimplify_ctxp;
 static struct gimplify_omp_ctx *gimplify_omp_ctxp;
+
+static bool mcdc_instrument_this_expr;
 
 /* Forward declaration.  */
 static enum gimplify_status gimplify_compound_expr (tree *, gimple_seq *, bool);
@@ -2483,7 +2487,7 @@ gimplify_call_expr (tree *expr_p, gimple_seq *pre_p, bool want_value)
    shortcut_cond_r should only be called by shortcut_cond_expr.  */
 
 static tree
-shortcut_cond_r (tree pred, tree *true_label_p, tree *false_label_p,
+shortcut_cond_r (tree pred, tree *true_label_p, tree *false_label_p, tree true_exit, tree false_exit,
 		 location_t locus)
 {
   tree local_label = NULL_TREE;
@@ -2506,12 +2510,12 @@ shortcut_cond_r (tree pred, tree *true_label_p, tree *false_label_p,
 	false_label_p = &local_label;
 
       /* Keep the original source location on the first 'if'.  */
-      t = shortcut_cond_r (TREE_OPERAND (pred, 0), NULL, false_label_p, locus);
+      t = shortcut_cond_r (TREE_OPERAND (pred, 0), NULL, false_label_p, true_exit, false_exit, locus);
       append_to_statement_list (t, &expr);
 
       /* Set the source location of the && on the second 'if'.  */
       new_locus = EXPR_HAS_LOCATION (pred) ? EXPR_LOCATION (pred) : locus;
-      t = shortcut_cond_r (TREE_OPERAND (pred, 1), true_label_p, false_label_p,
+      t = shortcut_cond_r (TREE_OPERAND (pred, 1), true_label_p, false_label_p, true_exit, false_exit,
 			   new_locus);
       append_to_statement_list (t, &expr);
     }
@@ -2529,12 +2533,12 @@ shortcut_cond_r (tree pred, tree *true_label_p, tree *false_label_p,
 	true_label_p = &local_label;
 
       /* Keep the original source location on the first 'if'.  */
-      t = shortcut_cond_r (TREE_OPERAND (pred, 0), true_label_p, NULL, locus);
+      t = shortcut_cond_r (TREE_OPERAND (pred, 0), true_label_p, NULL, true_exit, false_exit, locus);
       append_to_statement_list (t, &expr);
 
       /* Set the source location of the || on the second 'if'.  */
       new_locus = EXPR_HAS_LOCATION (pred) ? EXPR_LOCATION (pred) : locus;
-      t = shortcut_cond_r (TREE_OPERAND (pred, 1), true_label_p, false_label_p,
+      t = shortcut_cond_r (TREE_OPERAND (pred, 1), true_label_p, false_label_p, true_exit, false_exit,
 			   new_locus);
       append_to_statement_list (t, &expr);
     }
@@ -2558,9 +2562,9 @@ shortcut_cond_r (tree pred, tree *true_label_p, tree *false_label_p,
       new_locus = EXPR_HAS_LOCATION (pred) ? EXPR_LOCATION (pred) : locus;
       expr = build3 (COND_EXPR, void_type_node, TREE_OPERAND (pred, 0),
 		     shortcut_cond_r (TREE_OPERAND (pred, 1), true_label_p,
-				      false_label_p, locus),
+				      false_label_p, true_exit, false_exit, locus),
 		     shortcut_cond_r (TREE_OPERAND (pred, 2), true_label_p,
-				      false_label_p, new_locus));
+				      false_label_p, true_exit, false_exit, new_locus));
     }
   else
     {
@@ -2586,6 +2590,7 @@ shortcut_cond_r (tree pred, tree *true_label_p, tree *false_label_p,
 static tree
 shortcut_cond_expr (tree expr)
 {
+  tree pred_orig;
   tree pred = TREE_OPERAND (expr, 0);
   tree then_ = TREE_OPERAND (expr, 1);
   tree else_ = TREE_OPERAND (expr, 2);
@@ -2595,8 +2600,10 @@ shortcut_cond_expr (tree expr)
   bool emit_end, emit_false, jump_over_else;
   bool then_se = then_ && TREE_SIDE_EFFECTS (then_);
   bool else_se = else_ && TREE_SIDE_EFFECTS (else_);
-
+  int mcdc_counter = get_instrument_mcdc__startid();
+#if 0
   /* First do simple transformations.  */
+  pred_orig = pred;
   if (!else_se)
     {
       /* If there is no 'else', turn
@@ -2605,17 +2612,23 @@ shortcut_cond_expr (tree expr)
 	   if (a) if (b) then c.  */
       while (TREE_CODE (pred) == TRUTH_ANDIF_EXPR)
 	{
-	  /* Keep the original source location on the first 'if'.  */
+#if 1
+    	  /* Keep the original source location on the first 'if'.  */
 	  location_t locus = EXPR_LOC_OR_LOC (expr, input_location);
-	  TREE_OPERAND (expr, 0) = TREE_OPERAND (pred, 1);
+	  TREE_OPERAND (expr, 0) = TREE_OPERAND (pred, 1);            // expr = COND_EXPR(b)
 	  /* Set the source location of the && on the second 'if'.  */
 	  if (EXPR_HAS_LOCATION (pred))
 	    SET_EXPR_LOCATION (expr, EXPR_LOCATION (pred));
-	  then_ = shortcut_cond_expr (expr);
+	  then_ = shortcut_cond_expr (expr);      // if (b) <orig then> <orig else>
 	  then_se = then_ && TREE_SIDE_EFFECTS (then_);
-	  pred = TREE_OPERAND (pred, 0);
-	  expr = build3 (COND_EXPR, void_type_node, pred, then_, NULL_TREE);
+	  pred = TREE_OPERAND (pred, 0);                       // pred = (a)
+//	  expr = build3 (COND_EXPR, void_type_node, pred, then_, instrument_mcdc__callnode(expr, 0));
+
+	  tree mcdc_count_node = instrument_mcdc__callnode(expr, 0);
+	  expr = build3 (COND_EXPR, void_type_node, pred, then_, mcdc_count_node);
+	  else_se = 1;  /* Have now made side effects. */
 	  SET_EXPR_LOCATION (expr, locus);
+#endif
 	}
     }
 
@@ -2629,13 +2642,13 @@ shortcut_cond_expr (tree expr)
 	{
 	  /* Keep the original source location on the first 'if'.  */
 	  location_t locus = EXPR_LOC_OR_LOC (expr, input_location);
-	  TREE_OPERAND (expr, 0) = TREE_OPERAND (pred, 1);
+	  TREE_OPERAND (expr, 0) = TREE_OPERAND (pred, 1);              // expr = b
 	  /* Set the source location of the || on the second 'if'.  */
 	  if (EXPR_HAS_LOCATION (pred))
 	    SET_EXPR_LOCATION (expr, EXPR_LOCATION (pred));
 	  else_ = shortcut_cond_expr (expr);
 	  else_se = else_ && TREE_SIDE_EFFECTS (else_);
-	  pred = TREE_OPERAND (pred, 0);
+	  pred = TREE_OPERAND (pred, 0);                                // pred = a
 	  expr = build3 (COND_EXPR, void_type_node, pred, NULL_TREE, else_);
 	  SET_EXPR_LOCATION (expr, locus);
 	}
@@ -2646,6 +2659,7 @@ shortcut_cond_expr (tree expr)
       && TREE_CODE (pred) != TRUTH_ORIF_EXPR)
     return expr;
 
+#endif
   /* Otherwise we need to mess with gotos.  Change
        if (a) c; else d;
      to
@@ -2653,6 +2667,24 @@ shortcut_cond_expr (tree expr)
        c; goto end;
        no: d; end:
      and recursively gimplify the condition.  */
+  if (1)  /* my then- and else arms are the conditions exitpoints and need instrumentation */
+  {
+	  tree mcdc_count_node_then = instrument_mcdc__callnode(expr);
+	  tree mcdc_count_node_else = instrument_mcdc__callnode(expr);
+
+	  if (then_)
+		 // then_ = chainon(mcdc_count_node, then_); /* Add as first statement */
+		 then_ = build2(COMPOUND_EXPR, TREE_TYPE(then_), mcdc_count_node_then, then_); // wrap into a compound statement. chainon is illegal.
+	  else
+		  then_ = mcdc_count_node_then;
+
+	  if (else_)
+		  else_ = build2(COMPOUND_EXPR, TREE_TYPE(else_), mcdc_count_node_else, else_);
+	  else
+		  else_ = mcdc_count_node_else;
+  }
+  then_se = 1;
+  else_se = 1;
 
   true_label = false_label = end_label = NULL_TREE;
 
@@ -2691,7 +2723,7 @@ shortcut_cond_expr (tree expr)
 
   /* If there was nothing else in our arms, just forward the label(s).  */
   if (!then_se && !else_se)
-    return shortcut_cond_r (pred, true_label_p, false_label_p,
+    return shortcut_cond_r (pred, true_label_p, false_label_p, then_, else_,
 			    EXPR_LOC_OR_LOC (expr, input_location));
 
   /* If our last subexpression already has a terminal label, reuse it.  */
@@ -2724,7 +2756,11 @@ shortcut_cond_expr (tree expr)
   jump_over_else = block_may_fallthru (then_);
 
   pred = shortcut_cond_r (pred, true_label_p, false_label_p,
+           then_, else_,   // Tell shortcut the exit paths, so it can emit MCDC counters
 			  EXPR_LOC_OR_LOC (expr, input_location));
+
+  if (mcdc_counter != get_instrument_mcdc__startid())   // have emitted some counters
+     create_mcdc_expression(pred_orig, pred, mcdc_counter); /* old/new */
 
   expr = NULL;
   append_to_statement_list (pred, &expr);
@@ -2909,7 +2945,7 @@ generic_expr_could_trap_p (tree expr)
       *EXPR_P should be stored.  */
 
 static enum gimplify_status
-gimplify_cond_expr (tree *expr_p, gimple_seq *pre_p, fallback_t fallback)
+gimplify_cond_expr (tree *expr_p, gimple_seq *pre_p, fallback_t fallback, bool is_top_level)
 {
   tree expr = *expr_p;
   tree type = TREE_TYPE (expr);
@@ -2922,6 +2958,20 @@ gimplify_cond_expr (tree *expr_p, gimple_seq *pre_p, fallback_t fallback)
   enum tree_code pred_code;
   gimple_seq seq = NULL;
 
+  /**** MCDC *****
+   * Pre-load seq with initialization statements
+   ***************/
+#if 0
+  {
+	  tree path = build_decl(NULL, VAR_DECL,get_identifier("mcdc_path"), integer_type_node);
+// tree *init =
+	  DECL_ARTIFICIAL(path) = TRUE;
+	  DECL_CONTEXT (path) = cfun->decl;
+	  DECL_INITIAL (path) = integer_zero_node;
+	  gimplify_and_add(path, &seq);
+
+  }
+#endif
   /* If this COND_EXPR has a value, copy the values into a temporary within
      the arms.  */
   if (!VOID_TYPE_P (type))
@@ -2996,6 +3046,7 @@ gimplify_cond_expr (tree *expr_p, gimple_seq *pre_p, fallback_t fallback)
   if (TREE_CODE (TREE_OPERAND (expr, 0)) == TRUTH_ANDIF_EXPR
       || TREE_CODE (TREE_OPERAND (expr, 0)) == TRUTH_ORIF_EXPR)
     {
+	  mcdc_instrument_this_expr = is_top_level;
       expr = shortcut_cond_expr (expr);
 
       if (expr != *expr_p)
@@ -3006,9 +3057,9 @@ gimplify_cond_expr (tree *expr_p, gimple_seq *pre_p, fallback_t fallback)
 	     form properly, as cleanups might cause the target labels to be
 	     wrapped in a TRY_FINALLY_EXPR.  To prevent that, we need to
 	     set up a conditional context.  */
-	  gimple_push_condition ();
+	  gimple_push_condition ();         // notifies that we are within a condition
 	  gimplify_stmt (expr_p, &seq);
-	  gimple_pop_condition (pre_p);
+	  gimple_pop_condition (pre_p);     // pop notification
 	  gimple_seq_add_seq (pre_p, seq);
 
 	  return GS_ALL_DONE;
@@ -7580,7 +7631,7 @@ gimplify_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 	  break;
 
 	case COND_EXPR:
-	  ret = gimplify_cond_expr (expr_p, pre_p, fallback);
+	  ret = gimplify_cond_expr (expr_p, pre_p, fallback, is_statement);
 
 	  /* C99 code may assign to an array in a structure value of a
 	     conditional expression, and this has undefined behavior
@@ -8731,7 +8782,11 @@ gimplify_body (tree fndecl, bool do_parms)
 
   /* Gimplify the function's body.  */
   seq = NULL;
+  gimple_init_mcdc_profiler(DECL_SAVED_TREE (fndecl));
+
   gimplify_stmt (&DECL_SAVED_TREE (fndecl), &seq);
+
+  /********************/
   outer_bind = gimple_seq_first_stmt (seq);
   if (!outer_bind)
     {
@@ -8746,6 +8801,15 @@ gimplify_body (tree fndecl, bool do_parms)
     ;
   else
     outer_bind = gimple_build_bind (NULL_TREE, seq, NULL);
+
+  /**** FOR TEST: init initialization mal here ************/
+// gimple	stmt1 = gimple_build_assign (build_decl(EXPR_LOCATION(current_function_decl), VAR_DECL, get_identifier("PROF_mcdc_path"), integer_type_node),
+//		build_int_cst (integer_type_node, 0));
+
+	// need to get the first statement inside the BIND node
+//	gsi_insert_before (&seq,stmt1,GSI_NEW_STMT);
+//    gimple_stmt_iterator inner_si = gsi_start (seq);
+//    gsi_insert_after_without_update(&inner_si, stmt1, GSI_SAME_STMT);
 
   DECL_SAVED_TREE (fndecl) = NULL_TREE;
 
