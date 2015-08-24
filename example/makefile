@@ -15,7 +15,7 @@ $(EXE): test.o test_test.c
 	$(GCC) --coverage -o $(@) $(^)
 %.gcno: %.o
 %.o: %.c	
-	$(CC) -ftest-coverage -fprofile-arcs -da -fdump-tree-original-raw -fdump-tree-all $(^)
+	$(CC) -ftest-coverage -fprofile-arcs -da -fdump-tree-gimple $(^)
 test.gcda: $(EXE)
 	./$(<)
 

@@ -1533,6 +1533,23 @@ gimplify_case_label_expr (tree *expr_p, gimple_seq *pre_p)
   return GS_ALL_DONE;
 }
 
+/* Build a MCDC-counted GOTO to the LABEL_DECL pointed to by LABEL_P, building it first if necessary. */
+
+tree
+build_mcdc_and_jump (tree *label_p)
+{
+   if (label_p == NULL)
+      /* Fall through */
+      return NULL_TREE;
+   if (*label_p == NULL_TREE)
+   {
+      tree label = create_artificial_label (UNKNOWN_LOCATION);
+      *label_p = label;
+   }
+   tree count = instrument_mcdc__callnode(NULL_TREE);
+   return build2 (COMPOUND_EXPR, void_type_node, count, build1(GOTO_EXPR, void_type_node, *label_p));
+}
+
 /* Build a GOTO to the LABEL_DECL pointed to by LABEL_P, building it first
    if necessary.  */
 
@@ -2487,7 +2504,7 @@ gimplify_call_expr (tree *expr_p, gimple_seq *pre_p, bool want_value)
    shortcut_cond_r should only be called by shortcut_cond_expr.  */
 
 static tree
-shortcut_cond_r (tree pred, tree *true_label_p, tree *false_label_p, tree true_exit, tree false_exit,
+shortcut_cond_r (tree pred, tree *true_label_p, tree *false_label_p, bool true_is_exit, bool false_is_exit,
 		 location_t locus)
 {
   tree local_label = NULL_TREE;
@@ -2510,12 +2527,12 @@ shortcut_cond_r (tree pred, tree *true_label_p, tree *false_label_p, tree true_e
 	false_label_p = &local_label;
 
       /* Keep the original source location on the first 'if'.  */
-      t = shortcut_cond_r (TREE_OPERAND (pred, 0), NULL, false_label_p, true_exit, false_exit, locus);
+      t = shortcut_cond_r (TREE_OPERAND (pred, 0), NULL, false_label_p, 0, false_is_exit, locus);
       append_to_statement_list (t, &expr);
 
       /* Set the source location of the && on the second 'if'.  */
       new_locus = EXPR_HAS_LOCATION (pred) ? EXPR_LOCATION (pred) : locus;
-      t = shortcut_cond_r (TREE_OPERAND (pred, 1), true_label_p, false_label_p, true_exit, false_exit,
+      t = shortcut_cond_r (TREE_OPERAND (pred, 1), true_label_p, false_label_p, true_is_exit, false_is_exit,
 			   new_locus);
       append_to_statement_list (t, &expr);
     }
@@ -2533,12 +2550,12 @@ shortcut_cond_r (tree pred, tree *true_label_p, tree *false_label_p, tree true_e
 	true_label_p = &local_label;
 
       /* Keep the original source location on the first 'if'.  */
-      t = shortcut_cond_r (TREE_OPERAND (pred, 0), true_label_p, NULL, true_exit, false_exit, locus);
+      t = shortcut_cond_r (TREE_OPERAND (pred, 0), true_label_p, NULL, true_is_exit, 0, locus);
       append_to_statement_list (t, &expr);
 
       /* Set the source location of the || on the second 'if'.  */
       new_locus = EXPR_HAS_LOCATION (pred) ? EXPR_LOCATION (pred) : locus;
-      t = shortcut_cond_r (TREE_OPERAND (pred, 1), true_label_p, false_label_p, true_exit, false_exit,
+      t = shortcut_cond_r (TREE_OPERAND (pred, 1), true_label_p, false_label_p, true_is_exit, false_is_exit,
 			   new_locus);
       append_to_statement_list (t, &expr);
     }
@@ -2562,15 +2579,16 @@ shortcut_cond_r (tree pred, tree *true_label_p, tree *false_label_p, tree true_e
       new_locus = EXPR_HAS_LOCATION (pred) ? EXPR_LOCATION (pred) : locus;
       expr = build3 (COND_EXPR, void_type_node, TREE_OPERAND (pred, 0),
 		     shortcut_cond_r (TREE_OPERAND (pred, 1), true_label_p,
-				      false_label_p, true_exit, false_exit, locus),
+				      false_label_p, true_is_exit, false_is_exit, locus),
 		     shortcut_cond_r (TREE_OPERAND (pred, 2), true_label_p,
-				      false_label_p, true_exit, false_exit, new_locus));
+				      false_label_p, true_is_exit, false_is_exit, new_locus));
     }
   else
     {
-      expr = build3 (COND_EXPR, void_type_node, pred,
-		     build_and_jump (true_label_p),
-		     build_and_jump (false_label_p));
+     tree true_path, false_path;
+     true_path  = true_is_exit ?build_mcdc_and_jump (true_label_p):build_and_jump (true_label_p);
+     false_path = false_is_exit?build_mcdc_and_jump (false_label_p):build_and_jump (false_label_p);
+      expr = build3 (COND_EXPR, void_type_node, pred, true_path, false_path);
       SET_EXPR_LOCATION (expr, locus);
     }
 
@@ -2597,13 +2615,13 @@ shortcut_cond_expr (tree expr)
   tree true_label, false_label, end_label, t;
   tree *true_label_p;
   tree *false_label_p;
-  bool emit_end, emit_false, jump_over_else;
+  bool emit_end, emit_false, emit_count, jump_over_else;
   bool then_se = then_ && TREE_SIDE_EFFECTS (then_);
   bool else_se = else_ && TREE_SIDE_EFFECTS (else_);
   int mcdc_counter = get_instrument_mcdc__startid();
-#if 0
   /* First do simple transformations.  */
   pred_orig = pred;
+#if 0
   if (!else_se)
     {
       /* If there is no 'else', turn
@@ -2667,24 +2685,6 @@ shortcut_cond_expr (tree expr)
        c; goto end;
        no: d; end:
      and recursively gimplify the condition.  */
-  if (1)  /* my then- and else arms are the conditions exitpoints and need instrumentation */
-  {
-	  tree mcdc_count_node_then = instrument_mcdc__callnode(expr);
-	  tree mcdc_count_node_else = instrument_mcdc__callnode(expr);
-
-	  if (then_)
-		 // then_ = chainon(mcdc_count_node, then_); /* Add as first statement */
-		 then_ = build2(COMPOUND_EXPR, TREE_TYPE(then_), mcdc_count_node_then, then_); // wrap into a compound statement. chainon is illegal.
-	  else
-		  then_ = mcdc_count_node_then;
-
-	  if (else_)
-		  else_ = build2(COMPOUND_EXPR, TREE_TYPE(else_), mcdc_count_node_else, else_);
-	  else
-		  else_ = mcdc_count_node_else;
-  }
-  then_se = 1;
-  else_se = 1;
 
   true_label = false_label = end_label = NULL_TREE;
 
@@ -2721,9 +2721,10 @@ shortcut_cond_expr (tree expr)
   else
     false_label_p = NULL;
 
+  emit_count = ((TREE_CODE(pred) == TRUTH_ANDIF_EXPR) && (!true_label));
   /* If there was nothing else in our arms, just forward the label(s).  */
   if (!then_se && !else_se)
-    return shortcut_cond_r (pred, true_label_p, false_label_p, then_, else_,
+    return shortcut_cond_r (pred, true_label_p, false_label_p, 1, 1,
 			    EXPR_LOC_OR_LOC (expr, input_location));
 
   /* If our last subexpression already has a terminal label, reuse it.  */
@@ -2756,7 +2757,7 @@ shortcut_cond_expr (tree expr)
   jump_over_else = block_may_fallthru (then_);
 
   pred = shortcut_cond_r (pred, true_label_p, false_label_p,
-           then_, else_,   // Tell shortcut the exit paths, so it can emit MCDC counters
+           1, 1,   // Tell shortcut the exit paths, so it can emit MCDC counters
 			  EXPR_LOC_OR_LOC (expr, input_location));
 
   if (mcdc_counter != get_instrument_mcdc__startid())   // have emitted some counters
@@ -2764,7 +2765,8 @@ shortcut_cond_expr (tree expr)
 
   expr = NULL;
   append_to_statement_list (pred, &expr);
-
+  if (emit_count) // condition may fall through; need to generate a counter
+     append_to_statement_list (instrument_mcdc__callnode(expr), &expr); /* For the fallthrough-part of pred */
   append_to_statement_list (then_, &expr);
   if (else_se)
     {
