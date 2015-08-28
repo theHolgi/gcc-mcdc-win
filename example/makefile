@@ -8,14 +8,19 @@ GENHTML := $(LCOVDIR)/bin/genhtml
 
 EXE  = test.exe
 
-all: test.gcda.txt test.gcno.txt COV/index.html
+########## Requested outputs ##########
+GCDATA = test.gcda.txt test.gcno.txt
+PDFs   = testfunc.pdf testfunc2.pdf
+#######################################
+
+all: $(GCDATA) COV/index.html $(PDFs)
 
 
 $(EXE): test.o test_test.c
 	$(GCC) --coverage -o $(@) $(^)
 %.gcno: %.o
-%.o: %.c	
-	$(CC) -ftest-coverage -fprofile-arcs -da -fdump-tree-gimple $(^)
+%.o: %.c
+	$(CC) -ftest-coverage -fprofile-arcs -da -fdump-tree-gimple -fdump-tree-cfg $(^)
 test.gcda: $(EXE)
 	./$(<)
 
@@ -33,3 +38,7 @@ COV/index.html: test.c.gcov
 clean:
 	rm -rf $(EXE) *.o *.gc* *.info COV
 
+testfunc.svg testfunc2.svg: test.o
+
+%.pdf: %.svg
+	dot -Tpdf < $(<) > $(@)

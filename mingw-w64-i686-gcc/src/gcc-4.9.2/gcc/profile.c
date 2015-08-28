@@ -1388,8 +1388,7 @@ branch_prob (void)
       /* Output MCDC structures */
       decision_tree_list_t *mcdc;
 
-//      gimple_init_mcdc_profiler();
-
+  // too late:    coverage_counter_alloc (GCOV_COUNTER_MCDC, get_instrument_mcdc__startid());
       FOR_EACH_MCDC_STRUCT(cfun, mcdc)
 //      for (mcdc = Decision_tree_root; mcdc; for_each_mcdc_advance_walker(cfun, &mcdc))
       {

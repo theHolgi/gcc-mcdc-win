@@ -64,6 +64,7 @@ extern void gimple_add_tmp_var_fn (struct function *, tree);
 extern tree unshare_expr (tree);
 extern tree unshare_expr_without_location (tree);
 extern tree voidify_wrapper_expr (tree, tree);
+extern tree build_mcdc_and_jump (tree *);
 extern tree build_and_jump (tree *);
 extern enum gimplify_status gimplify_self_mod_expr (tree *, gimple_seq *,
 						    gimple_seq *, bool, tree);

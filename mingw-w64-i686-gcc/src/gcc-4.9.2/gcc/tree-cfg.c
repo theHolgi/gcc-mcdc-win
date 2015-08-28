@@ -475,7 +475,7 @@ make_blocks (gimple_seq seq)
       /* If the statement starts a new basic block or if we have determined
 	 in a previous pass that we need to create a new block for STMT, do
 	 so now.  */
-      if (start_new_block || stmt_starts_bb_p (stmt, prev_stmt))
+      if (start_new_block || stmt_starts_bb_p (stmt, prev_stmt)) // start bb is normally enforced by label
 	{
 	  if (!first_stmt_of_seq)
 	    gsi_split_seq_before (&i, &seq);
@@ -489,7 +489,7 @@ make_blocks (gimple_seq seq)
 
       /* If STMT is a basic block terminator, set START_NEW_BLOCK for the
 	 next iteration.  */
-      if (stmt_ends_bb_p (stmt))
+      if (stmt_ends_bb_p (stmt))  // this can be a condition/switch, goto/return, or exception throwing
 	{
 	  /* If the stmt can make abnormal goto use a new temporary
 	     for the assignment to the LHS.  This makes sure the old value

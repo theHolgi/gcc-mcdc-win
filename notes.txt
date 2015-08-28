@@ -1,0 +1,32 @@
+
+Build CFG:
+tree-cfg.c      build_gimple_cfg() 
+
+Instrumentation:
+profile.c       instrument_edges() called by
+ branch_prob <- tree_profiling() <- ... <- ipa_passes()
+
+
+-----------------------
+test.c.205r.split1   5 -> 7
+test.c.217r.split2   5 -> 7
+
+split wegen function call!
+
+----------------------------
+Beobachten:
+init_ic_make_global_vars()
+ - varpool_finalize_decl(x) <- output the variable to asm file, if needed or externally
+   visible.
+
+Arc: PROF_edge_counter
+
+
+Zähler:
+/* Counter information for current function.  */
+static unsigned fn_ctr_mask; /* Mask of counters used.  */
+static GTY(()) tree fn_v_ctrs[GCOV_COUNTERS];   /* counter variables.  */
+static unsigned fn_n_ctrs[GCOV_COUNTERS]; /* Counters allocated.  */
+static unsigned fn_b_ctrs[GCOV_COUNTERS]; /* Allocation base.  */
+
+coverage_counter_alloc()

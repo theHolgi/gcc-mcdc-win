@@ -11,4 +11,5 @@
 *.gcna
 mingw-w64-i686-gcc/src.fertig
 mingw-w64-i686-gcc/src/build-x86_64-w64-mingw32
+mingw-w64-i686-gcc/src/gcc-4.9.2-build
 weg

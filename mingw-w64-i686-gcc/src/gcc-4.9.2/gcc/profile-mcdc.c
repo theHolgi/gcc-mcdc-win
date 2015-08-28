@@ -278,6 +278,7 @@ void create_mcdc_expression(tree old_cond_node, tree new_cond_node, int counter)
 
 void gimple_init_mcdc_profiler(tree body)
 {
+#if 0
 	tree mcdc_profile_fn_type;
 	// Muß eigentlich nur 1x überhaupt gemacht werden.
 	mcdc_profile_fn_type
@@ -293,8 +294,9 @@ void gimple_init_mcdc_profiler(tree body)
              = tree_cons (get_identifier ("leaf"), NULL,
                     DECL_ATTRIBUTES (tree_mcdc_profiler_fn));
 	DECL_ASSEMBLER_NAME (tree_mcdc_profiler_fn); //   notwendig ??
-
+#endif
     profile_mcdc_counter_id = 0;
+    coverage_counter_alloc (GCOV_COUNTER_MCDC, 3);
 }
 
 int get_instrument_mcdc__startid(void)
@@ -330,7 +332,12 @@ void gimple_instrument_mcdc__init(gimple_seq *pre_p, tree expr)
 #if 1
 tree instrument_mcdc__callnode(tree expr)
 {
-	return  build_call_nary(void_type_node, build_addr(tree_mcdc_profiler_fn, expr),2, build_int_cst(integer_type_node,0), build_int_cst(integer_type_node, profile_mcdc_counter_id++));
+   tree gcov_type_tmp_var;
+
+   return build2(PREINCREMENT_EXPR,gcov_type_node,
+            tree_coverage_counter_ref (GCOV_COUNTER_MCDC, profile_mcdc_counter_id++),
+            build_int_cst(gcov_type_node,1));
+   // return  build_call_nary(void_type_node, build_addr(tree_mcdc_profiler_fn, expr),2, build_int_cst(integer_type_node,0), build_int_cst(integer_type_node, profile_mcdc_counter_id++));
 }
 #else
 void instrument_mcdc__callnode(tree expr, int case_id)
